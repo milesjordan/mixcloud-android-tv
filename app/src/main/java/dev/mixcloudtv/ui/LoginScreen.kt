@@ -8,7 +8,17 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -53,7 +63,7 @@ class LoginViewModel(private val c: AppContainer) : ViewModel() {
     val status = MutableStateFlow<String?>(null)
     val done = MutableStateFlow(false)
 
-    fun onCode(code: String, redirectUri: String) {
+    fun onCode(code: String, redirectUri: String?) {
         viewModelScope.launch {
             status.value = "Logging in…"
             runCatching { c.completeLogin(c.auth.exchangeCode(code, redirectUri)) }
@@ -83,7 +93,7 @@ fun LoginScreen(onDone: () -> Unit) {
     val username by container.auth.username.collectAsStateWithLifecycle(initialValue = null)
     val status by vm.status.collectAsStateWithLifecycle()
     val done by vm.done.collectAsStateWithLifecycle()
-    var useTvBrowser by remember { mutableStateOf(false) }
+    var mode by remember { mutableStateOf(LoginMode.Qr) }
 
     LaunchedEffect(done) { if (done) onDone() }
 
@@ -101,13 +111,75 @@ fun LoginScreen(onDone: () -> Unit) {
             Button(onClick = onDone, modifier = Modifier.focusRequester(r)) { Text("Back") }
             LaunchedEffect(Unit) { runCatching { r.requestFocus() } }
         }
-        useTvBrowser -> TvBrowserLogin(container, vm, status)
-        else -> QrLogin(container, vm, status, onUseTvBrowser = { useTvBrowser = true })
+        mode == LoginMode.TvBrowser -> TvBrowserLogin(container, vm, status)
+        mode == LoginMode.Code -> CodeLogin(container, vm, status, onUseTvBrowser = { mode = LoginMode.TvBrowser })
+        else -> QrLogin(container, vm, status, onUseCode = { mode = LoginMode.Code }, onUseTvBrowser = { mode = LoginMode.TvBrowser })
     }
 }
 
+private enum class LoginMode { Qr, Code, TvBrowser }
+
+/**
+ * Fallback for networks where the phone can't reach the TV: the QR code opens Mixcloud's login
+ * with no redirect, Mixcloud shows the code on the phone, and the user types or pastes it here.
+ */
 @Composable
-private fun QrLogin(container: AppContainer, vm: LoginViewModel, status: String?, onUseTvBrowser: () -> Unit) {
+private fun CodeLogin(container: AppContainer, vm: LoginViewModel, status: String?, onUseTvBrowser: () -> Unit) {
+    val qr = remember { qrBitmap(container.auth.authorizeUrl(redirectUri = null)) }
+    var code by remember { mutableStateOf("") }
+    var fieldFocused by remember { mutableStateOf(false) }
+    val r = remember { FocusRequester() }
+
+    Row(
+        Modifier.fillMaxSize().padding(ScreenPadding),
+        horizontalArrangement = Arrangement.spacedBy(48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(340.dp).clip(RoundedCornerShape(12.dp)).background(Color.White).padding(12.dp)) {
+            Image(qr, contentDescription = "Login QR code", modifier = Modifier.fillMaxSize())
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Log in with a code", style = MaterialTheme.typography.headlineMedium)
+            Text("1. Scan the code with your phone (any network is fine).")
+            Text("2. Log in to Mixcloud and allow access. Mixcloud shows a code.")
+            Text("3. Enter that code below. The Fire TV app on your phone can paste it.")
+            BasicTextField(
+                value = code,
+                onValueChange = { code = it.trim() },
+                singleLine = true,
+                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 22.sp),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (code.isNotBlank()) vm.onCode(code, null) }),
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .focusRequester(r)
+                    .onFocusChanged { fieldFocused = it.isFocused }
+                    .border(
+                        2.dp,
+                        if (fieldFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .padding(16.dp),
+                decorationBox = { inner ->
+                    Box {
+                        if (code.isEmpty()) Text("Press OK to enter the code", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        inner()
+                    }
+                },
+            )
+            status?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(onClick = { if (code.isNotBlank()) vm.onCode(code, null) }) { Text("Log in") }
+                OutlinedButton(onClick = onUseTvBrowser) { Text("Log in on the TV instead") }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { r.requestFocus() } }
+}
+
+@Composable
+private fun QrLogin(container: AppContainer, vm: LoginViewModel, status: String?, onUseCode: () -> Unit, onUseTvBrowser: () -> Unit) {
     var url by remember { mutableStateOf<String?>(null) }
     DisposableEffect(Unit) {
         val server = LanLoginServer(
@@ -137,7 +209,10 @@ private fun QrLogin(container: AppContainer, vm: LoginViewModel, status: String?
             Text("3. Log in to Mixcloud and allow access.")
             url?.let { Text("Or open $it on any device on this network.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
             status?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) }
-            OutlinedButton(onClick = onUseTvBrowser, modifier = Modifier.focusRequester(r)) { Text("Log in on the TV instead") }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = onUseCode, modifier = Modifier.focusRequester(r)) { Text("Phone can't connect? Use a code") }
+                OutlinedButton(onClick = onUseTvBrowser) { Text("Log in on the TV instead") }
+            }
         }
     }
     LaunchedEffect(Unit) { runCatching { r.requestFocus() } }

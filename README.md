@@ -74,6 +74,7 @@ Run the unit tests with `./gradlew :app:testDebugUnitTest`. Contributors (human 
    MIXCLOUD_CLIENT_SECRET=...
    ```
 3. Rebuild and reinstall. Choose **Log in** in the app and scan the QR code with a phone on the **same Wi-Fi network**.
+4. If your phone times out connecting to the TV, choose **Phone can't connect? Use a code**. Some browsers, VPNs and guest networks block traffic to devices on your network. The second QR code opens Mixcloud directly, and Mixcloud shows a code for you to enter on the TV. The code is long, so paste it with the Fire TV phone app's keyboard. You only need to log in once.
 
 > 🔐 Your client secret is compiled into the APK you build. **Don't share that APK with anyone.** Anyone who has it can extract your secret. Each person should build the app with their own Mixcloud application.
 
