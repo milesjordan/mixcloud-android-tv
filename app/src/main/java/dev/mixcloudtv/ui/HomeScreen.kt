@@ -25,6 +25,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.mixcloudtv.AppContainer
 import dev.mixcloudtv.data.Cloudcast
+import dev.mixcloudtv.data.User
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -34,7 +35,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
-data class HomeRow(val id: String, val title: String, val items: List<Cloudcast>)
+/** A row of shows, or of people when [users] is non-empty. */
+data class HomeRow(val id: String, val title: String, val items: List<Cloudcast>, val users: List<User> = emptyList())
 data class HomeState(val loading: Boolean = true, val rows: List<HomeRow> = emptyList(), val username: String? = null)
 
 private val GENRES = listOf(
@@ -81,9 +83,15 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
             }
             add(Triple("new-house", "Latest: House", suspend { c.client.cloudcasts("/discover/house/latest/", 24) }))
         }
+        val followed = user?.let { async { runCatching { c.client.users("/$it/following/", 40) }.getOrNull().orEmpty() } }
         val rows = specs.map { (id, title, load) ->
             async { runCatching { load() }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { HomeRow(id, title, it) } }
-        }.awaitAll().filterNotNull()
+        }.awaitAll().filterNotNull().toMutableList()
+        followed?.await()?.takeIf { it.isNotEmpty() }?.let { users ->
+            // Straight after the uploads from these people (or after Recently played if that row is hidden).
+            val after = rows.indexOfFirst { it.id == "feed" }.takeIf { it >= 0 } ?: rows.indexOfFirst { it.id == "recent" }
+            rows.add(after + 1, HomeRow("following", "Artists you follow", emptyList(), users))
+        }
         _state.value = HomeState(loading = false, rows = rows, username = user)
     }
 }
@@ -94,6 +102,7 @@ fun HomeScreen(
     onSearch: () -> Unit,
     onNowPlaying: () -> Unit,
     onAccount: () -> Unit,
+    onOpenUser: (String) -> Unit,
 ) {
     val container = appContainer()
     val vm: HomeViewModel = viewModel { HomeViewModel(container) }
@@ -120,7 +129,12 @@ fun HomeScreen(
             !state.loading && state.rows.isEmpty() -> item { CenteredMessage("Couldn't load anything from Mixcloud.", vm::reload) }
         }
         items(state.rows, key = { it.id }) { row ->
-            val target = if (restored) null else vm.lastFocused ?: state.rows.firstOrNull()?.let { "${it.id}|${it.items.first().key}" }
+            if (row.users.isNotEmpty()) {
+                UserRow(row.title, row.users) { onOpenUser(it.key) }
+                return@items
+            }
+            val target = if (restored) null else vm.lastFocused
+                ?: state.rows.firstOrNull { it.items.isNotEmpty() }?.let { "${it.id}|${it.items.first().key}" }
             CloudcastRow(
                 rowId = row.id,
                 title = row.title,
