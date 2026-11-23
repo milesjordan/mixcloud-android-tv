@@ -14,6 +14,7 @@ import androidx.media3.session.SessionToken
 import dev.mixcloudtv.data.Cloudcast
 import dev.mixcloudtv.data.MixcloudClient
 import dev.mixcloudtv.data.PositionStore
+import dev.mixcloudtv.data.RecentStore
 import dev.mixcloudtv.data.stream.StreamResolver
 import dev.mixcloudtv.data.stream.StreamResult
 import kotlinx.coroutines.Job
@@ -43,6 +44,7 @@ class PlaybackConnection(
     private val client: MixcloudClient,
     private val streams: StreamResolver,
     private val positions: PositionStore,
+    private val recent: RecentStore,
 ) {
     private val scope = MainScope()
     private var controller: MediaController? = null
@@ -112,6 +114,7 @@ class PlaybackConnection(
                     c.setMediaItem(item, positions.resumePoint(cast.key, cast.audioLength))
                     c.prepare()
                     c.play()
+                    recent.add(cast)
                     _state.update { it.copy(resolving = false) }
                 }
             }

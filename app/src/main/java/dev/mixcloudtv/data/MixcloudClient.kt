@@ -1,6 +1,11 @@
 package dev.mixcloudtv.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
@@ -8,6 +13,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -46,9 +52,34 @@ class MixcloudClient(
         get("/search/", userPage, mapOf("q" to query, "type" to "user", "limit" to "20"))
             .data.distinctBy { it.key }
 
-    suspend fun feed(username: String): List<Cloudcast> =
-        get("/$username/feed/", Page.serializer(FeedItem.serializer()), mapOf("limit" to "40"))
-            .data.flatMap { it.cloudcasts }.distinctBy { it.key }
+    /**
+     * Latest uploads from the people [username] follows, newest first. Mixcloud's /feed/ endpoint
+     * is the user's own activity, so this is built from each followed account's uploads instead.
+     */
+    suspend fun followingUploads(username: String, accounts: Int = 30, perAccount: Int = 5): List<Cloudcast> =
+        coroutineScope {
+            val limit = Semaphore(6)
+            users("/$username/following/", accounts)
+                .map { u -> async { limit.withPermit { runCatching { cloudcasts(u.key + "cloudcasts/", perAccount) }.getOrDefault(emptyList()) } } }
+                .awaitAll().flatten()
+                .distinctBy { it.key }
+                .sortedByDescending { it.createdTime.orEmpty() }
+                .take(40)
+        }
+
+    /** Lower-cased keys of everyone [username] follows, following Mixcloud's paging up to [max]. */
+    suspend fun followingKeys(username: String, max: Int = 1000): Set<String> {
+        val keys = linkedSetOf<String>()
+        var params = mapOf("limit" to "100")
+        while (keys.size < max) {
+            val page = get("/$username/following/", userPage, params)
+            page.data.forEach { keys += it.key.lowercase() }
+            val until = page.paging?.next?.toHttpUrlOrNull()?.queryParameter("until")
+            if (page.data.isEmpty() || until == null) break
+            params = mapOf("limit" to "100", "until" to until)
+        }
+        return keys
+    }
 
     /** The logged-in user. Pass [token] to check a token before it is saved. */
     suspend fun me(token: String? = null): User = get("/me/", User.serializer(), token = token)

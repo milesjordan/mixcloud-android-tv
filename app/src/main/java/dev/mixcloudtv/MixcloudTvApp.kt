@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import dev.mixcloudtv.data.MixcloudClient
 import dev.mixcloudtv.data.PositionStore
+import dev.mixcloudtv.data.RecentStore
 import dev.mixcloudtv.data.auth.AuthRepository
 import dev.mixcloudtv.data.stream.GraphqlStreamResolver
 import dev.mixcloudtv.data.stream.StreamResolver
@@ -38,7 +39,8 @@ class AppContainer(context: Context) {
     val client = MixcloudClient(http, json) { auth.currentToken() }
     val streams: StreamResolver = GraphqlStreamResolver(http, json)
     val positions = PositionStore(context)
-    val playback by lazy { PlaybackConnection(context.applicationContext, client, streams, positions) }
+    val recent = RecentStore(context, json)
+    val playback by lazy { PlaybackConnection(context.applicationContext, client, streams, positions, recent) }
 
     /** Checks a token against /me/ and stores it with the username. */
     suspend fun completeLogin(token: String) {

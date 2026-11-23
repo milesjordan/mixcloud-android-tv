@@ -15,7 +15,8 @@ It's a hobby project. It isn't published on any app store, and you build and sid
   - Native audio playback that keeps going in the background.
   - The remote's play/pause, fast-forward and rewind buttons work.
   - Scrub through a mix on the progress bar, and it remembers where you were.
-- **Your account (optional):** log in by scanning a QR code with your phone. You then get your feed, favourites, Listen Later and recently played, and can favourite, follow and add to Listen Later.
+- **Your account (optional):** log in by scanning a QR code with your phone. You then get new shows from people you follow, a row of the artists you follow, your favourites and Listen Later, and can favourite, follow/unfollow and add to Listen Later.
+- **Recently played:** kept on the TV. Mixcloud only records listens made in its own players, so plays in this app don't appear in your Mixcloud listening history (and may not count as plays for the creator). Listens from your other devices are shown after the TV's own.
 - **Mixcloud's limits are respected:** country/licensing blocks, play limits and Select-only shows show a message and are never bypassed. There is no download feature, and none will be added.
 
 ## How it works
@@ -89,6 +90,12 @@ Run the unit tests with `./gradlew :app:testDebugUnitTest`. Contributors (human 
   - The login callback from your phone to the TV travels over plain HTTP on your local network. Anyone who can intercept traffic on that network while you log in could capture the one-time login code. If that matters to you, don't use the login feature.
   - The code is exchanged for a token in a single HTTPS request sent directly to Mixcloud. The app never logs it.
 - **Token storage:** your Mixcloud access token is stored in the app's private storage on the TV and sent only to Mixcloud over HTTPS, in a request header. Android backups are turned off for the app, so the token isn't copied off the device. Logging out deletes it.
+- **What's stored on the TV:** everything below is kept in the app's private storage and never uploaded anywhere.
+  - Your login token (see above).
+  - A list of the last 30 shows you played: show details only, such as title, DJ and artwork links.
+  - How far into each show you got, for resuming.
+
+  No audio is ever saved: shows are always streamed. Clearing the app's data (Settings → Applications → Manage installed applications → Mixcloud TV → Clear data) or uninstalling removes all of it.
 - **Debug builds only:** these accept `adb shell am start -d "mixcloudtv://token?access_token=…"` to set a token. Release builds don't.
 - **Reporting issues:** if you find a security problem, please open an issue without exploit details, or contact the maintainer privately.
 

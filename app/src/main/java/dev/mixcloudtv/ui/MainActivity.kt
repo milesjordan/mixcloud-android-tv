@@ -72,6 +72,7 @@ private fun AppNav() {
                 onSearch = { nav.navigate("search") },
                 onNowPlaying = { nav.navigate("player") },
                 onAccount = { nav.navigate("login") },
+                onOpenUser = { nav.openUser(it) },
             )
         }
         composable("search") {

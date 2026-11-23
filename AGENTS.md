@@ -27,6 +27,7 @@ app/src/main/java/dev/mixcloudtv/
     Models.kt                 @Serializable REST models
     MixcloudClient.kt         Public REST API client (OkHttp + kotlinx.serialization)
     PositionStore.kt          Resume positions (SharedPreferences)
+    RecentStore.kt            Recently played on this TV (metadata only, never audio)
     auth/AuthRepository.kt    OAuth code exchange, token storage (DataStore)
     auth/LanLoginServer.kt    One-off LAN HTTP server for QR-code login
     stream/                   StreamResolver + the only unofficial-API code
