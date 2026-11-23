@@ -17,9 +17,13 @@ class PositionStore(context: Context) {
     }
 
     /** Where to start [key] from: the saved position, unless it's near the start or the end. */
-    fun resumePoint(key: String, audioLengthSec: Int): Long {
-        val saved = get(key)
-        val lengthMs = audioLengthSec * 1000L
-        return if (saved > 30_000 && (lengthMs == 0L || saved < lengthMs - 60_000)) saved else 0L
+    fun resumePoint(key: String, audioLengthSec: Int): Long = resumePoint(get(key), audioLengthSec)
+
+    companion object {
+        /** Resume from [savedMs] unless it's in the first 30 s or the last minute of the show. */
+        fun resumePoint(savedMs: Long, audioLengthSec: Int): Long {
+            val lengthMs = audioLengthSec * 1000L
+            return if (savedMs > 30_000 && (lengthMs == 0L || savedMs < lengthMs - 60_000)) savedMs else 0L
+        }
     }
 }

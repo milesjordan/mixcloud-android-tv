@@ -90,7 +90,7 @@ class GraphqlStreamResolver(
     }
 
     private fun decodeOrNull(s: String): String? =
-        runCatching { XorCipher.decode(s) }.getOrNull()?.takeIf { it.startsWith("http") }
+        runCatching { XorCipher.decode(s) }.getOrNull()?.takeIf { it.startsWith("https://") }
 
     private fun quote(s: String): String = Json.encodeToString(JsonPrimitive(s))
 

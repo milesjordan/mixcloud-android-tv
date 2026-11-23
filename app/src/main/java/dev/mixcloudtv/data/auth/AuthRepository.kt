@@ -20,6 +20,18 @@ import java.io.IOException
 
 private val Context.authStore by preferencesDataStore("auth")
 
+/** Mixcloud documents a form-encoded reply ("access_token=..."); JSON is accepted too. */
+internal fun parseTokenResponse(json: Json, body: String): String? {
+    val fromJson = runCatching {
+        json.parseToJsonElement(body).jsonObject["access_token"]?.jsonPrimitive?.content
+    }.getOrNull()
+    val token = fromJson ?: body.trim().split('&')
+        .firstOrNull { it.startsWith("access_token=") }
+        ?.substringAfter('=')
+        ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+    return token?.takeIf { it.isNotBlank() }
+}
+
 /** Mixcloud OAuth 2.0 (authorisation-code flow) and token storage. */
 class AuthRepository(
     context: Context,
@@ -53,13 +65,7 @@ class AuthRepository(
         return withContext(Dispatchers.IO) {
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                 val body = resp.body.string()
-                // Mixcloud documents a form-encoded reply ("access_token=..."); accept JSON too.
-                val token = runCatching {
-                    json.parseToJsonElement(body).jsonObject["access_token"]?.jsonPrimitive?.content
-                }.getOrNull() ?: body.split('&').map { it.trim() }
-                    .firstOrNull { it.startsWith("access_token=") }
-                    ?.substringAfter('=')
-                    ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
+                val token = parseTokenResponse(json, body)
                 if (!resp.isSuccessful || token.isNullOrBlank()) {
                     throw IOException("Mixcloud didn't return a token (HTTP ${resp.code}).")
                 }
