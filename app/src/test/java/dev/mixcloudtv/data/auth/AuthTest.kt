@@ -1,6 +1,7 @@
 package dev.mixcloudtv.data.auth
 
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.After
@@ -11,6 +12,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 class TokenResponseTest {
     private val json = Json
@@ -27,6 +30,26 @@ class TokenResponseTest {
         assertNull(parseTokenResponse(json, """{"error":"invalid_grant"}"""))
         assertNull(parseTokenResponse(json, "access_token="))
         assertNull(parseTokenResponse(json, ""))
+    }
+}
+
+class OAuthUrlTest {
+    @Test
+    fun `code login leaves redirect_uri out of both requests`() {
+        val authorize = buildAuthorizeUrl("id", null).toHttpUrl()
+        assertEquals("id", authorize.queryParameter("client_id"))
+        assertNull(authorize.queryParameter("redirect_uri"))
+        val token = buildTokenUrl("id", "secret", "  the-code \n", null)
+        assertNull(token.queryParameter("redirect_uri"))
+        assertEquals("the-code", token.queryParameter("code"))
+        assertEquals("secret", token.queryParameter("client_secret"))
+    }
+
+    @Test
+    fun `qr login sends the same redirect_uri in both requests`() {
+        val redirect = "http://192.168.1.5:8765/abc/callback"
+        assertEquals(redirect, buildAuthorizeUrl("id", redirect).toHttpUrl().queryParameter("redirect_uri"))
+        assertEquals(redirect, buildTokenUrl("id", "secret", "c", redirect).queryParameter("redirect_uri"))
     }
 }
 
@@ -80,6 +103,22 @@ class LanLoginServerTest {
         assertTrue(second.contains("already been used"))
     }
 
+    @Test(timeout = 10_000)
+    fun `simultaneous callbacks accept exactly one code`() {
+        val start = CountDownLatch(1)
+        val bodies = (1..8).map { i ->
+            Executors.newSingleThreadExecutor().submit<String> {
+                start.await()
+                get("${base}callback?code=code$i").second
+            }
+        }
+        start.countDown()
+        val results = bodies.map { it.get() }
+        assertEquals(1, codes.size)
+        assertEquals(1, results.count { it.contains("You're logged in") })
+        assertEquals(7, results.count { it.contains("already been used") })
+    }
+
     @Test
     fun `error text is html-escaped`() {
         val (_, body) = get("${base}callback?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
@@ -114,7 +153,7 @@ class LanLoginServerConnectedTest {
     @Test(timeout = 5_000)
     fun `onConnected fires only for the QR link`() {
         var connected = 0
-        val server = LanLoginServer(authorizeUrl = { "https://auth.example.com/" }, onCode = { _, _ -> }, onError = {}, onConnected = { connected++ })
+        val server = LanLoginServer(authorizeUrl = { "https://auth.example.com/" }, onCode = { _, _ -> }, onError = {}, onConnected = { connected++; true })
         val base = server.start(host = "127.0.0.1", port = 0)!!
         try {
             val http = OkHttpClient.Builder().followRedirects(false).build()
@@ -122,6 +161,24 @@ class LanLoginServerConnectedTest {
             assertEquals(0, connected)
             http.newCall(Request.Builder().url(base).build()).execute().close()
             assertEquals(1, connected)
+        } finally {
+            server.stop()
+        }
+    }
+}
+
+class LanLoginServerExpiredTest {
+    @Test(timeout = 5_000)
+    fun `link stops redirecting once the screen has moved to the code login`() {
+        val server = LanLoginServer(authorizeUrl = { "https://auth.example.com/" }, onCode = { _, _ -> }, onError = {}, onConnected = { false })
+        val base = server.start(host = "127.0.0.1", port = 0)!!
+        try {
+            val http = OkHttpClient.Builder().followRedirects(false).build()
+            http.newCall(Request.Builder().url(base).build()).execute().use {
+                assertEquals(410, it.code)
+                assertNull(it.header("Location"))
+                assertTrue(it.body.string().contains("Scan the new code"))
+            }
         } finally {
             server.stop()
         }

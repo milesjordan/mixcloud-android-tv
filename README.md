@@ -89,7 +89,7 @@ Run the unit tests with `./gradlew :app:testDebugUnitTest`. Contributors (human 
   - Mixcloud requires a client secret and doesn't support PKCE, so the secret has to be built into the app.
   - The login callback from your phone to the TV travels over plain HTTP on your local network. Anyone who can intercept traffic on that network while you log in could capture the one-time login code. If that matters to you, don't use the login feature.
   - The code is exchanged for a token in a single HTTPS request sent directly to Mixcloud. The app never logs it.
-- **Token storage:** your Mixcloud access token is stored in the app's private storage on the TV and sent only to Mixcloud over HTTPS, in a request header. Android backups are turned off for the app, so the token isn't copied off the device. Logging out deletes it.
+- **Token storage:** your Mixcloud access token is stored in the app's private storage on the TV and sent only to Mixcloud over HTTPS, in a request header. Android backups and device-to-device transfers are turned off for all of the app's data, so Android's backup and phone-migration features don't copy the token off the device. Logging out deletes it.
 - **What's stored on the TV:** everything below is kept in the app's private storage and never uploaded anywhere.
   - Your login token (see above).
   - A list of the last 30 shows you played: show details only, such as title, DJ and artwork links.

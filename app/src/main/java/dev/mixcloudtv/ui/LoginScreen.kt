@@ -57,6 +57,7 @@ import dev.mixcloudtv.AppContainer
 import dev.mixcloudtv.data.auth.AuthRepository
 import dev.mixcloudtv.data.auth.LanLoginServer
 import kotlinx.coroutines.delay
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -95,6 +96,11 @@ fun LoginScreen(onDone: () -> Unit) {
     val status by vm.status.collectAsStateWithLifecycle()
     val done by vm.done.collectAsStateWithLifecycle()
     var mode by remember { mutableStateOf(LoginMode.Qr) }
+    // A status from one login method (such as a network error) doesn't apply to the next one.
+    fun switchTo(next: LoginMode, message: String? = null) {
+        vm.status.value = message
+        mode = next
+    }
 
     LaunchedEffect(done) { if (done) onDone() }
 
@@ -113,15 +119,12 @@ fun LoginScreen(onDone: () -> Unit) {
             LaunchedEffect(Unit) { runCatching { r.requestFocus() } }
         }
         mode == LoginMode.TvBrowser -> TvBrowserLogin(container, vm, status)
-        mode == LoginMode.Code -> CodeLogin(container, vm, status, onUseTvBrowser = { mode = LoginMode.TvBrowser })
+        mode == LoginMode.Code -> CodeLogin(container, vm, status, onUseTvBrowser = { switchTo(LoginMode.TvBrowser) })
         else -> QrLogin(
             container, vm, status,
-            onUseCode = { mode = LoginMode.Code },
-            onPhoneCantConnect = {
-                vm.status.value = "Your phone couldn't reach the TV, so use this code instead."
-                mode = LoginMode.Code
-            },
-            onUseTvBrowser = { mode = LoginMode.TvBrowser },
+            onUseCode = { switchTo(LoginMode.Code) },
+            onPhoneCantConnect = { switchTo(LoginMode.Code, "Your phone couldn't reach the TV, so use this code instead.") },
+            onUseTvBrowser = { switchTo(LoginMode.TvBrowser) },
         )
     }
 }
@@ -129,6 +132,9 @@ fun LoginScreen(onDone: () -> Unit) {
 private enum class LoginMode { Qr, Code, TvBrowser }
 
 private const val PHONE_CONNECT_TIMEOUT_MS = 30_000L
+private const val WAITING = 0
+private const val CONNECTED = 1
+private const val GAVE_UP = 2
 
 /**
  * Fallback for networks where the phone can't reach the TV: the QR code opens Mixcloud's login
@@ -199,13 +205,15 @@ private fun QrLogin(
     onUseTvBrowser: () -> Unit,
 ) {
     var url by remember { mutableStateOf<String?>(null) }
-    var phoneConnected by remember { mutableStateOf(false) }
+    // WAITING → CONNECTED (the phone opened the link) or GAVE_UP (the timeout fired), whichever
+    // happens first; the server thread and the timeout both change it with compareAndSet.
+    val phone = remember { AtomicInteger(WAITING) }
     DisposableEffect(Unit) {
         val server = LanLoginServer(
             authorizeUrl = { redirect -> container.auth.authorizeUrl(redirect) },
             onCode = { code, redirect -> vm.onCode(code, redirect) },
             onError = { vm.status.value = it },
-            onConnected = { phoneConnected = true },
+            onConnected = { phone.compareAndSet(WAITING, CONNECTED) || phone.get() == CONNECTED },
         )
         url = server.start()
         if (url == null) vm.status.value = "The TV doesn't seem to be on a network."
@@ -216,7 +224,7 @@ private fun QrLogin(
     LaunchedEffect(url) {
         if (url == null) return@LaunchedEffect
         delay(PHONE_CONNECT_TIMEOUT_MS)
-        if (!phoneConnected) onPhoneCantConnect()
+        if (phone.compareAndSet(WAITING, GAVE_UP)) onPhoneCantConnect()
     }
     val qr = remember(url) { url?.let { qrBitmap(it) } }
     val r = remember { FocusRequester() }

@@ -17,6 +17,8 @@
         android:banner="@drawable/banner"
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:supportsRtl="true">
 
         <activity
