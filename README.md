@@ -15,7 +15,7 @@ It's a hobby project. It isn't published on any app store, and you build and sid
   - Native audio playback that keeps going in the background.
   - The remote's play/pause, fast-forward and rewind buttons work.
   - Scrub through a mix on the progress bar, and it remembers where you were.
-- **Your account (optional):** log in by scanning a QR code with your phone. You then get new shows from people you follow, your favourites and Listen Later, and can favourite, follow/unfollow and add to Listen Later.
+- **Your account (optional):** log in by scanning a QR code with your phone. You then get new shows from people you follow, a row of the artists you follow, your favourites and Listen Later, and can favourite, follow/unfollow and add to Listen Later.
 - **Recently played:** kept on the TV. Mixcloud only records listens made in its own players, so plays in this app don't appear in your Mixcloud listening history (and may not count as plays for the creator). Listens from your other devices are shown after the TV's own.
 - **Mixcloud's limits are respected:** country/licensing blocks, play limits and Select-only shows show a message and are never bypassed. There is no download feature, and none will be added.
 
