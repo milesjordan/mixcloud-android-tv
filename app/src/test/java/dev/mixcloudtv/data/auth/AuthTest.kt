@@ -88,3 +88,24 @@ class LanLoginServerTest {
         assertTrue(codes.isEmpty())
     }
 }
+
+class LanLoginServerConcurrencyTest {
+    private val server = LanLoginServer(authorizeUrl = { "https://auth.example.com/" }, onCode = { _, _ -> }, onError = {})
+    private val base = server.start(host = "127.0.0.1", port = 0)!!
+
+    @After
+    fun tearDown() = server.stop()
+
+    @Test(timeout = 5_000)
+    fun `idle pre-opened connections don't block a real request`() {
+        // Browsers open spare connections and leave them idle; the real request must still be answered.
+        val port = base.removePrefix("http://127.0.0.1:").substringBefore('/').toInt()
+        val idle = List(3) { java.net.Socket("127.0.0.1", port) }
+        try {
+            val http = OkHttpClient.Builder().followRedirects(false).build()
+            http.newCall(Request.Builder().url(base).build()).execute().use { assertEquals(302, it.code) }
+        } finally {
+            idle.forEach { it.close() }
+        }
+    }
+}
