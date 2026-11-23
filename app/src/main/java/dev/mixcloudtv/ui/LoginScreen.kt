@@ -56,6 +56,7 @@ import com.google.zxing.qrcode.QRCodeWriter
 import dev.mixcloudtv.AppContainer
 import dev.mixcloudtv.data.auth.AuthRepository
 import dev.mixcloudtv.data.auth.LanLoginServer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -113,11 +114,21 @@ fun LoginScreen(onDone: () -> Unit) {
         }
         mode == LoginMode.TvBrowser -> TvBrowserLogin(container, vm, status)
         mode == LoginMode.Code -> CodeLogin(container, vm, status, onUseTvBrowser = { mode = LoginMode.TvBrowser })
-        else -> QrLogin(container, vm, status, onUseCode = { mode = LoginMode.Code }, onUseTvBrowser = { mode = LoginMode.TvBrowser })
+        else -> QrLogin(
+            container, vm, status,
+            onUseCode = { mode = LoginMode.Code },
+            onPhoneCantConnect = {
+                vm.status.value = "Your phone couldn't reach the TV, so use this code instead."
+                mode = LoginMode.Code
+            },
+            onUseTvBrowser = { mode = LoginMode.TvBrowser },
+        )
     }
 }
 
 private enum class LoginMode { Qr, Code, TvBrowser }
+
+private const val PHONE_CONNECT_TIMEOUT_MS = 30_000L
 
 /**
  * Fallback for networks where the phone can't reach the TV: the QR code opens Mixcloud's login
@@ -179,17 +190,33 @@ private fun CodeLogin(container: AppContainer, vm: LoginViewModel, status: Strin
 }
 
 @Composable
-private fun QrLogin(container: AppContainer, vm: LoginViewModel, status: String?, onUseCode: () -> Unit, onUseTvBrowser: () -> Unit) {
+private fun QrLogin(
+    container: AppContainer,
+    vm: LoginViewModel,
+    status: String?,
+    onUseCode: () -> Unit,
+    onPhoneCantConnect: () -> Unit,
+    onUseTvBrowser: () -> Unit,
+) {
     var url by remember { mutableStateOf<String?>(null) }
+    var phoneConnected by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         val server = LanLoginServer(
             authorizeUrl = { redirect -> container.auth.authorizeUrl(redirect) },
             onCode = { code, redirect -> vm.onCode(code, redirect) },
             onError = { vm.status.value = it },
+            onConnected = { phoneConnected = true },
         )
         url = server.start()
         if (url == null) vm.status.value = "The TV doesn't seem to be on a network."
         onDispose { server.stop() }
+    }
+    // Many phones and networks can't reach the TV. If nothing has connected after a while,
+    // switch to the code login, which only needs the phone to reach Mixcloud.
+    LaunchedEffect(url) {
+        if (url == null) return@LaunchedEffect
+        delay(PHONE_CONNECT_TIMEOUT_MS)
+        if (!phoneConnected) onPhoneCantConnect()
     }
     val qr = remember(url) { url?.let { qrBitmap(it) } }
     val r = remember { FocusRequester() }

@@ -109,3 +109,21 @@ class LanLoginServerConcurrencyTest {
         }
     }
 }
+
+class LanLoginServerConnectedTest {
+    @Test(timeout = 5_000)
+    fun `onConnected fires only for the QR link`() {
+        var connected = 0
+        val server = LanLoginServer(authorizeUrl = { "https://auth.example.com/" }, onCode = { _, _ -> }, onError = {}, onConnected = { connected++ })
+        val base = server.start(host = "127.0.0.1", port = 0)!!
+        try {
+            val http = OkHttpClient.Builder().followRedirects(false).build()
+            http.newCall(Request.Builder().url(base.replace(Regex("/[0-9a-f]+/$"), "/wrong/")).build()).execute().close()
+            assertEquals(0, connected)
+            http.newCall(Request.Builder().url(base).build()).execute().close()
+            assertEquals(1, connected)
+        } finally {
+            server.stop()
+        }
+    }
+}
