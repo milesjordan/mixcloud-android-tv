@@ -6,6 +6,8 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
 import java.security.SecureRandom
+import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
@@ -24,7 +26,8 @@ class LanLoginServer(
     private val nonce: String = ByteArray(16).also { SecureRandom().nextBytes(it) }
         .joinToString("") { "%02x".format(it) }
 
-    @Volatile private var used = false
+    private val used = AtomicBoolean(false)
+    private val slots = Semaphore(MAX_CONNECTIONS)
 
     /**
      * Starts listening and returns the URL to put in the QR code, or null with no network.
@@ -39,8 +42,20 @@ class LanLoginServer(
         thread(isDaemon = true, name = "lan-login") {
             while (!ss.isClosed) {
                 val client = runCatching { ss.accept() }.getOrNull() ?: break
-                runCatching { handle(client, redirect) }
-                runCatching { client.close() }
+                // Browsers open spare connections and leave them idle, so each connection gets its
+                // own thread; otherwise one idle socket would stall the real request.
+                if (!slots.tryAcquire()) {
+                    runCatching { client.close() }
+                    continue
+                }
+                thread(isDaemon = true, name = "lan-login-conn") {
+                    try {
+                        runCatching { handle(client, redirect) }
+                    } finally {
+                        runCatching { client.close() }
+                        slots.release()
+                    }
+                }
             }
         }
         return "$base/"
@@ -52,8 +67,15 @@ class LanLoginServer(
     }
 
     private fun handle(client: Socket, redirect: String) {
-        client.soTimeout = 10_000
-        val requestLine = readRequestLine(client) ?: return
+        client.soTimeout = 15_000
+        val requestLine = readLine(client) ?: return
+        // Read (and ignore) the headers so closing the socket doesn't reset it before the reply arrives.
+        var headerBytes = 0
+        while (true) {
+            val header = readLine(client) ?: break
+            headerBytes += header.length
+            if (header.isEmpty() || headerBytes > MAX_HEADER_BYTES) break
+        }
         val parts = requestLine.split(' ')
         val out = client.getOutputStream()
         if (parts.size < 3 || parts[0] != "GET") {
@@ -69,11 +91,11 @@ class LanLoginServer(
         when (path) {
             "/$nonce/" -> out.write(response("302 Found", extraHeaders = "Location: ${authorizeUrl(redirect)}\r\n"))
             "/$nonce/callback" -> {
-                val code = params["code"]?.takeUnless { used }
-                if (code != null) used = true
+                // compareAndSet makes the single-use check atomic now that connections run in parallel.
+                val code = params["code"]?.takeIf { used.compareAndSet(false, true) }
                 val message = when {
                     code != null -> "You're logged in. Look at your TV."
-                    used -> "This login link has already been used."
+                    used.get() -> "This login link has already been used."
                     else -> "Login didn't complete: ${escapeHtml(params["error"] ?: "no code")}"
                 }
                 val html = "<!doctype html><meta name=viewport content='width=device-width'>" +
@@ -84,14 +106,17 @@ class LanLoginServer(
             else -> out.write(response("404 Not Found"))
         }
         out.flush()
+        runCatching { client.shutdownOutput() }
     }
 
     companion object {
         const val PORT = 8765
         private const val MAX_REQUEST_LINE = 4096
+        private const val MAX_HEADER_BYTES = 16_384
+        private const val MAX_CONNECTIONS = 16
 
-        /** Reads the first request line, refusing anything longer than [MAX_REQUEST_LINE]. */
-        private fun readRequestLine(client: Socket): String? {
+        /** Reads one CRLF-terminated line, refusing anything longer than [MAX_REQUEST_LINE]. */
+        private fun readLine(client: Socket): String? {
             val input = client.getInputStream()
             val sb = StringBuilder()
             while (sb.length < MAX_REQUEST_LINE) {
