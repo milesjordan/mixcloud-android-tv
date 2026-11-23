@@ -81,6 +81,10 @@ RELEASE_KEY_PASSWORD=...
   - It only responds to the random one-time link in the QR code.
   - It accepts a single login, then shuts down when you leave the screen.
   - Only log in on a network you trust.
+- **Known login limitations:** these come from how Mixcloud's OAuth works.
+  - Mixcloud requires a client secret and doesn't support PKCE, so the secret has to be built into the app.
+  - The login callback from your phone to the TV travels over plain HTTP on your local network. Anyone who can intercept traffic on that network while you log in could capture the one-time login code. If that matters to you, don't use the login feature.
+  - The code is exchanged for a token in a single HTTPS request sent directly to Mixcloud. The app never logs it.
 - **Token storage:** your Mixcloud access token is stored in the app's private storage on the TV and sent only to Mixcloud over HTTPS. Logging out deletes it.
 - **Debug builds only:** these accept `adb shell am start -d "mixcloudtv://token?access_token=…"` to set a token. Release builds don't.
 - **Reporting issues:** if you find a security problem, please open an issue without exploit details, or contact the maintainer privately.

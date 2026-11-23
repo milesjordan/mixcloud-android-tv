@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: lets you log in over adb with
+     adb shell am start -d "mixcloudtv://token?access_token=..."
+     Kept out of release builds so other apps on the device can't set the token. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".ui.MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="mixcloudtv" android:host="token" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
