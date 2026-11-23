@@ -19,6 +19,8 @@ class LanLoginServer(
     private val authorizeUrl: (redirectUri: String) -> String,
     private val onCode: (code: String, redirectUri: String) -> Unit,
     private val onError: (String) -> Unit,
+    /** Called when a phone opens the QR link, i.e. it can reach the TV. */
+    private val onConnected: () -> Unit = {},
 ) {
     private var socket: ServerSocket? = null
 
@@ -89,7 +91,10 @@ class LanLoginServer(
             URLDecoder.decode(it.substringBefore('='), "UTF-8") to URLDecoder.decode(it.substringAfter('='), "UTF-8")
         }
         when (path) {
-            "/$nonce/" -> out.write(response("302 Found", extraHeaders = "Location: ${authorizeUrl(redirect)}\r\n"))
+            "/$nonce/" -> {
+                onConnected()
+                out.write(response("302 Found", extraHeaders = "Location: ${authorizeUrl(redirect)}\r\n"))
+            }
             "/$nonce/callback" -> {
                 // compareAndSet makes the single-use check atomic now that connections run in parallel.
                 val code = params["code"]?.takeIf { used.compareAndSet(false, true) }
