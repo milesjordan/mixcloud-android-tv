@@ -48,19 +48,23 @@ class AuthRepository(
     val isConfigured: Boolean
         get() = BuildConfig.MIXCLOUD_CLIENT_ID.isNotBlank() && BuildConfig.MIXCLOUD_CLIENT_SECRET.isNotBlank()
 
-    fun authorizeUrl(redirectUri: String = REDIRECT_URI): String =
+    /**
+     * With [redirectUri] null, Mixcloud shows the authorisation code on screen for the user
+     * to type into the app, which needs no network path from the phone back to the TV.
+     */
+    fun authorizeUrl(redirectUri: String? = REDIRECT_URI): String =
         "https://www.mixcloud.com/oauth/authorize".toHttpUrl().newBuilder()
             .addQueryParameter("client_id", BuildConfig.MIXCLOUD_CLIENT_ID)
-            .addQueryParameter("redirect_uri", redirectUri)
+            .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
             .build().toString()
 
-    /** [redirectUri] must be the same one used for [authorizeUrl]. */
-    suspend fun exchangeCode(code: String, redirectUri: String = REDIRECT_URI): String {
+    /** [redirectUri] must be the same one (or null) used for [authorizeUrl]. */
+    suspend fun exchangeCode(code: String, redirectUri: String? = REDIRECT_URI): String {
         val url = "https://www.mixcloud.com/oauth/access_token".toHttpUrl().newBuilder()
             .addQueryParameter("client_id", BuildConfig.MIXCLOUD_CLIENT_ID)
-            .addQueryParameter("redirect_uri", redirectUri)
+            .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
             .addQueryParameter("client_secret", BuildConfig.MIXCLOUD_CLIENT_SECRET)
-            .addQueryParameter("code", code)
+            .addQueryParameter("code", code.trim())
             .build()
         return withContext(Dispatchers.IO) {
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
