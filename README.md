@@ -90,6 +90,12 @@ Run the unit tests with `./gradlew :app:testDebugUnitTest`. Contributors (human 
   - The login callback from your phone to the TV travels over plain HTTP on your local network. Anyone who can intercept traffic on that network while you log in could capture the one-time login code. If that matters to you, don't use the login feature.
   - The code is exchanged for a token in a single HTTPS request sent directly to Mixcloud. The app never logs it.
 - **Token storage:** your Mixcloud access token is stored in the app's private storage on the TV and sent only to Mixcloud over HTTPS, in a request header. Android backups are turned off for the app, so the token isn't copied off the device. Logging out deletes it.
+- **What's stored on the TV:** everything below is kept in the app's private storage and never uploaded anywhere.
+  - Your login token (see above).
+  - A list of the last 30 shows you played: show details only, such as title, DJ and artwork links.
+  - How far into each show you got, for resuming.
+
+  No audio is ever saved: shows are always streamed. Clearing the app's data (Settings → Applications → Mixcloud for TV → Clear data) or uninstalling removes all of it.
 - **Debug builds only:** these accept `adb shell am start -d "mixcloudtv://token?access_token=…"` to set a token. Release builds don't.
 - **Reporting issues:** if you find a security problem, please open an issue without exploit details, or contact the maintainer privately.
 
