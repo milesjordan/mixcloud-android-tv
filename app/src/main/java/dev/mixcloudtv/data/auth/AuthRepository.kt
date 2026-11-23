@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -31,6 +32,24 @@ internal fun parseTokenResponse(json: Json, body: String): String? {
         ?.let { java.net.URLDecoder.decode(it, "UTF-8") }
     return token?.takeIf { it.isNotBlank() }
 }
+
+/**
+ * Mixcloud's authorise page. With [redirectUri] null, Mixcloud shows the code on screen instead
+ * of redirecting, and [buildTokenUrl] must then also leave redirect_uri out.
+ */
+internal fun buildAuthorizeUrl(clientId: String, redirectUri: String?): String =
+    "https://www.mixcloud.com/oauth/authorize".toHttpUrl().newBuilder()
+        .addQueryParameter("client_id", clientId)
+        .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
+        .build().toString()
+
+internal fun buildTokenUrl(clientId: String, clientSecret: String, code: String, redirectUri: String?): HttpUrl =
+    "https://www.mixcloud.com/oauth/access_token".toHttpUrl().newBuilder()
+        .addQueryParameter("client_id", clientId)
+        .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
+        .addQueryParameter("client_secret", clientSecret)
+        .addQueryParameter("code", code.trim())
+        .build()
 
 /** Mixcloud OAuth 2.0 (authorisation-code flow) and token storage. */
 class AuthRepository(
@@ -53,19 +72,11 @@ class AuthRepository(
      * to type into the app, which needs no network path from the phone back to the TV.
      */
     fun authorizeUrl(redirectUri: String? = REDIRECT_URI): String =
-        "https://www.mixcloud.com/oauth/authorize".toHttpUrl().newBuilder()
-            .addQueryParameter("client_id", BuildConfig.MIXCLOUD_CLIENT_ID)
-            .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
-            .build().toString()
+        buildAuthorizeUrl(BuildConfig.MIXCLOUD_CLIENT_ID, redirectUri)
 
     /** [redirectUri] must be the same one (or null) used for [authorizeUrl]. */
     suspend fun exchangeCode(code: String, redirectUri: String? = REDIRECT_URI): String {
-        val url = "https://www.mixcloud.com/oauth/access_token".toHttpUrl().newBuilder()
-            .addQueryParameter("client_id", BuildConfig.MIXCLOUD_CLIENT_ID)
-            .apply { if (redirectUri != null) addQueryParameter("redirect_uri", redirectUri) }
-            .addQueryParameter("client_secret", BuildConfig.MIXCLOUD_CLIENT_SECRET)
-            .addQueryParameter("code", code.trim())
-            .build()
+        val url = buildTokenUrl(BuildConfig.MIXCLOUD_CLIENT_ID, BuildConfig.MIXCLOUD_CLIENT_SECRET, code, redirectUri)
         return withContext(Dispatchers.IO) {
             http.newCall(Request.Builder().url(url).build()).execute().use { resp ->
                 val body = resp.body.string()

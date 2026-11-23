@@ -19,8 +19,11 @@ class LanLoginServer(
     private val authorizeUrl: (redirectUri: String) -> String,
     private val onCode: (code: String, redirectUri: String) -> Unit,
     private val onError: (String) -> Unit,
-    /** Called when a phone opens the QR link, i.e. it can reach the TV. */
-    private val onConnected: () -> Unit = {},
+    /**
+     * Called when a phone opens the QR link. Return false if the screen has already given up on
+     * the phone (and moved to the code login); the phone is then told to use the code instead.
+     */
+    private val onConnected: () -> Boolean = { true },
 ) {
     private var socket: ServerSocket? = null
 
@@ -91,9 +94,10 @@ class LanLoginServer(
             URLDecoder.decode(it.substringBefore('='), "UTF-8") to URLDecoder.decode(it.substringAfter('='), "UTF-8")
         }
         when (path) {
-            "/$nonce/" -> {
-                onConnected()
+            "/$nonce/" -> if (onConnected()) {
                 out.write(response("302 Found", extraHeaders = "Location: ${authorizeUrl(redirect)}\r\n"))
+            } else {
+                out.write(response("410 Gone", body = page("This link has expired. Scan the new code on your TV instead.")))
             }
             "/$nonce/callback" -> {
                 // compareAndSet makes the single-use check atomic now that connections run in parallel.
@@ -103,9 +107,7 @@ class LanLoginServer(
                     used.get() -> "This login link has already been used."
                     else -> "Login didn't complete: ${escapeHtml(params["error"] ?: "no code")}"
                 }
-                val html = "<!doctype html><meta name=viewport content='width=device-width'>" +
-                    "<body style='font-family:sans-serif;padding:2em;font-size:1.3em'>$message</body>"
-                out.write(response("200 OK", body = html))
+                out.write(response("200 OK", body = page(message)))
                 if (code != null) onCode(code, redirect) else onError(message)
             }
             else -> out.write(response("404 Not Found"))
@@ -113,6 +115,10 @@ class LanLoginServer(
         out.flush()
         runCatching { client.shutdownOutput() }
     }
+
+    /** [message] must already be HTML-safe. */
+    private fun page(message: String) = "<!doctype html><meta name=viewport content='width=device-width'>" +
+        "<body style='font-family:sans-serif;padding:2em;font-size:1.3em'>$message</body>"
 
     companion object {
         const val PORT = 8765
