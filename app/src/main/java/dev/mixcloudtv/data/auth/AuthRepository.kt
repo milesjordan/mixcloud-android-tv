@@ -33,7 +33,8 @@ class AuthRepository(
 
     suspend fun currentToken(): String? = token.first()
 
-    val isConfigured: Boolean get() = BuildConfig.MIXCLOUD_CLIENT_ID.isNotBlank()
+    val isConfigured: Boolean
+        get() = BuildConfig.MIXCLOUD_CLIENT_ID.isNotBlank() && BuildConfig.MIXCLOUD_CLIENT_SECRET.isNotBlank()
 
     fun authorizeUrl(redirectUri: String = REDIRECT_URI): String =
         "https://www.mixcloud.com/oauth/authorize".toHttpUrl().newBuilder()

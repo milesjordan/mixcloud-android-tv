@@ -12,6 +12,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import dev.mixcloudtv.BuildConfig
 import dev.mixcloudtv.MixcloudTvApp
 import kotlinx.coroutines.launch
 
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
 
     /** Dev shortcut: adb shell am start -d "mixcloudtv://token?access_token=..." */
     private fun handleIntent(intent: Intent?) {
+        if (!BuildConfig.DEBUG) return
         val data = intent?.data ?: return
         if (data.scheme != "mixcloudtv" || data.host != "token") return
         val token = data.getQueryParameter("access_token") ?: return
@@ -46,7 +48,9 @@ class MainActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val playback = container.playback
         when (keyCode) {
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> playback.togglePlay()
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> playback.togglePlay()
+            KeyEvent.KEYCODE_MEDIA_PLAY -> playback.resume()
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> playback.pause()
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> playback.seekBy(30_000)
             KeyEvent.KEYCODE_MEDIA_REWIND -> playback.seekBy(-30_000)
             else -> return super.onKeyDown(keyCode, event)

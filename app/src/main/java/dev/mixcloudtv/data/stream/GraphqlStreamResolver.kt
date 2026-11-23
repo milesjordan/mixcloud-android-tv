@@ -45,23 +45,19 @@ class GraphqlStreamResolver(
             .header("Accept", "application/json")
             .build()
 
-        val body = try {
+        val (code, body) = try {
             withContext(Dispatchers.IO) {
-                http.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) {
-                        return@withContext null.also { lastHttpCode = resp.code }
-                    }
-                    resp.body.string()
-                }
+                http.newCall(request).execute().use { resp -> resp.code to resp.body.string() }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
             return StreamResult.Unavailable(Reason.Error, "Couldn't reach Mixcloud: ${e.message ?: e.javaClass.simpleName}")
-        } ?: return StreamResult.Unavailable(Reason.Error, "Mixcloud returned HTTP $lastHttpCode for the stream lookup.")
-
+        }
+        if (code !in 200..299) {
+            return StreamResult.Unavailable(Reason.Error, "Mixcloud returned HTTP $code for the stream lookup.")
+        }
         return parse(body)
     }
-
-    @Volatile private var lastHttpCode: Int = 0
 
     internal fun parse(body: String): StreamResult {
         val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()

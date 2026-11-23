@@ -78,8 +78,12 @@ class PlaybackConnection(
         return c
     }
 
+    private var playJob: Job? = null
+
     fun play(cast: Cloudcast) {
-        scope.launch {
+        // A newer selection cancels an older one that is still resolving its stream.
+        playJob?.cancel()
+        playJob = scope.launch {
             saveCurrentPosition()
             _state.value = NowPlaying(cloudcast = cast, resolving = true)
             when (val result = streams.resolve(cast.key)) {
@@ -123,6 +127,14 @@ class PlaybackConnection(
     fun togglePlay() {
         val c = controller ?: return
         if (c.isPlaying) c.pause() else c.play()
+    }
+
+    fun resume() {
+        controller?.play()
+    }
+
+    fun pause() {
+        controller?.pause()
     }
 
     fun seekBy(deltaMs: Long) {

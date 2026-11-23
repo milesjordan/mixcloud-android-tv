@@ -91,7 +91,10 @@ class SearchViewModel(private val c: AppContainer) : ViewModel() {
     }
 
     private suspend fun search(q: String) {
-        if (q.isBlank()) return
+        if (q.isBlank()) {
+            _state.update { it.copy(searching = false, shows = emptyList(), users = emptyList(), error = null) }
+            return
+        }
         _state.update { it.copy(searching = true, error = null) }
         val shows = runCatching { c.client.searchCloudcasts(q) }
         val users = runCatching { c.client.searchUsers(q) }
