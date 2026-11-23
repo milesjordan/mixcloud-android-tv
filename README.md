@@ -95,7 +95,7 @@ Run the unit tests with `./gradlew :app:testDebugUnitTest`. Contributors (human 
   - A list of the last 30 shows you played: show details only, such as title, DJ and artwork links.
   - How far into each show you got, for resuming.
 
-  No audio is ever saved: shows are always streamed. Clearing the app's data (Settings → Applications → Mixcloud for TV → Clear data) or uninstalling removes all of it.
+  No audio is ever saved: shows are always streamed. Clearing the app's data (Settings → Applications → Manage installed applications → Mixcloud TV → Clear data) or uninstalling removes all of it.
 - **Debug builds only:** these accept `adb shell am start -d "mixcloudtv://token?access_token=…"` to set a token. Release builds don't.
 - **Reporting issues:** if you find a security problem, please open an issue without exploit details, or contact the maintainer privately.
 
