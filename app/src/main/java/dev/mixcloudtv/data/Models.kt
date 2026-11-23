@@ -88,7 +88,3 @@ data class Paging(val next: String? = null, val previous: String? = null)
 
 @Serializable
 data class Page<T>(val data: List<T> = emptyList(), val paging: Paging? = null)
-
-/** An entry in a user's activity feed. Only the uploads part is used. */
-@Serializable
-data class FeedItem(val cloudcasts: List<Cloudcast> = emptyList())

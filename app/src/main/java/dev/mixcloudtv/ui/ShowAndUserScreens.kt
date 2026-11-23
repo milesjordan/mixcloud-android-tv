@@ -49,6 +49,8 @@ data class ShowState(
     val similar: List<Cloudcast> = emptyList(),
     val error: String? = null,
     val loggedIn: Boolean = false,
+    /** Null until known (or when logged out). */
+    val following: Boolean? = null,
     val message: String? = null,
 )
 
@@ -187,6 +189,8 @@ data class UserState(
     val favourites: List<Cloudcast> = emptyList(),
     val error: String? = null,
     val loggedIn: Boolean = false,
+    /** Null until known (or when logged out). */
+    val following: Boolean? = null,
     val message: String? = null,
 )
 
@@ -205,13 +209,19 @@ class UserViewModel(private val c: AppContainer, private val key: String) : View
                 .onFailure { e -> _state.update { it.copy(loading = false, error = e.message ?: "Couldn't load") } }
             runCatching { c.client.cloudcasts(key + "cloudcasts/") }.onSuccess { l -> _state.update { it.copy(uploads = l) } }
             runCatching { c.client.cloudcasts(key + "favorites/") }.onSuccess { l -> _state.update { it.copy(favourites = l) } }
+            c.auth.username.first()?.let { me ->
+                runCatching { c.client.followingKeys(me) }
+                    .onSuccess { keys -> _state.update { it.copy(following = key.lowercase() in keys) } }
+            }
         }
     }
 
-    fun follow() {
+    fun toggleFollow() {
         viewModelScope.launch {
-            val msg = runCatching { c.client.follow(key) }.fold({ "Following ✓" }, { "Follow failed: ${it.message}" })
-            _state.update { it.copy(message = msg) }
+            val follow = _state.value.following != true
+            runCatching { if (follow) c.client.follow(key) else c.client.unfollow(key) }
+                .onSuccess { _state.update { it.copy(following = follow, message = null) } }
+                .onFailure { e -> _state.update { it.copy(message = "Couldn't ${if (follow) "follow" else "unfollow"}: ${e.message}") } }
         }
     }
 }
@@ -242,7 +252,13 @@ fun UserScreen(key: String, onOpenShow: (Cloudcast) -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         user.biog?.takeIf { it.isNotBlank() }?.let { Text(it, maxLines = 3, overflow = TextOverflow.Ellipsis) }
-                        if (state.loggedIn) Button(onClick = vm::follow) { Text("Follow") }
+                        if (state.loggedIn) {
+                            if (state.following == true) {
+                                OutlinedButton(onClick = vm::toggleFollow) { Text("Following ✓  (Unfollow)") }
+                            } else {
+                                Button(onClick = vm::toggleFollow) { Text("Follow") }
+                            }
+                        }
                         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     }
                 }

@@ -66,11 +66,15 @@ class HomeViewModel(private val c: AppContainer) : ViewModel() {
         val user = username
         _state.value = _state.value.copy(loading = true, username = user)
         val specs = buildList<Triple<String, String, suspend () -> List<Cloudcast>>> {
+            // Plays on this TV first, then listens Mixcloud recorded on other devices.
+            add(Triple("recent", "Recently played", suspend {
+                val remote = if (user != null) runCatching { c.client.cloudcasts("/$user/listens/") }.getOrDefault(emptyList()) else emptyList()
+                (c.recent.get() + remote).distinctBy { it.key }.take(40)
+            }))
             if (user != null) {
-                add(Triple("feed", "From people you follow", suspend { c.client.feed(user) }))
+                add(Triple("feed", "From people you follow", suspend { c.client.followingUploads(user) }))
                 add(Triple("later", "Listen later", suspend { c.client.cloudcasts("/me/listen-later/") }))
                 add(Triple("favs", "Your favourites", suspend { c.client.cloudcasts("/$user/favorites/") }))
-                add(Triple("listens", "Recently played", suspend { c.client.cloudcasts("/$user/listens/") }))
             }
             GENRES.forEach { (tag, title) ->
                 add(Triple("pop-$tag", "Popular: $title", suspend { c.client.cloudcasts("/discover/$tag/popular/", 24) }))

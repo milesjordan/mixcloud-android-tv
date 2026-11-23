@@ -91,4 +91,29 @@ class MixcloudClientTest {
         assertEquals("POST", req.method)
         assertEquals("/dj/mix/favorite/", req.url.encodedPath)
     }
+
+    @Test
+    fun `following uploads come from followed accounts, newest first`() = runTest {
+        server.dispatcher = object : mockwebserver3.Dispatcher() {
+            override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
+                val body = when (request.url.encodedPath) {
+                    "/me1/following/" -> """{"data":[{"key":"/a/"},{"key":"/b/"}]}"""
+                    "/a/cloudcasts/" -> """{"data":[{"key":"/a/old/","created_time":"2024-01-01T00:00:00Z"}]}"""
+                    "/b/cloudcasts/" -> """{"data":[{"key":"/b/new/","created_time":"2025-06-01T00:00:00Z"}]}"""
+                    else -> return MockResponse.Builder().code(404).build()
+                }
+                return MockResponse.Builder().body(body).build()
+            }
+        }
+        assertEquals(listOf("/b/new/", "/a/old/"), client.followingUploads("me1").map { it.key })
+    }
+
+    @Test
+    fun `following keys follow paging and are lower-cased`() = runTest {
+        ok("""{"data":[{"key":"/DeadMau5/"}],"paging":{"next":"https://api.mixcloud.com/me1/following/?limit=100&until=2020-01-01+00%3A00%3A00"}}""")
+        ok("""{"data":[{"key":"/b/"}],"paging":{}}""")
+        assertEquals(setOf("/deadmau5/", "/b/"), client.followingKeys("me1"))
+        server.takeRequest()
+        assertEquals("2020-01-01 00:00:00", server.takeRequest().url.queryParameter("until"))
+    }
 }
